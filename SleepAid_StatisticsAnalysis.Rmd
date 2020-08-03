@@ -1,0 +1,233 @@
+---
+title: "Capstone_SleepAidProgram"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggformula)
+library(lubridate)
+```
+
+## Summary
+
+Sleep issues such as insomnia affect over 50 million Americans and can lead to serious health problems, including depression and anxiety, and can increase risk of injury. Due to globalization, work hours/pressures, lot of screen time, social media activity causing more and more people deprived of sleep every day.
+
+In this proceeding we will check if the people would feel same results such as "anxiety","depression","sickness" when struggling with sleep issues than a normal person who have good sleep. Data is collected from Twitter, cleansed and grouped for our analysis.
+
+### Loadin Data
+```{r}
+load_data <- function(path) { 
+  files <- dir(path, pattern = '\\.csv', full.names = TRUE)
+  tables <- lapply(files, read.csv)
+  do.call(rbind, tables)
+}
+
+totalSleepTweets <- load_data("/Users/llogiset/Desktop/Education/Capstone/Lakshmi_Code/")
+```
+
+
+```{r sleep}
+totalSleepTweets <- read.csv("sleepAnalysis_ReadyStats_20200707-162015.csv")
+sleepTweetsDay1 <- read.csv("/Users/llogiset/Desktop/Education/Capstone/Lakshmi_Code/PASTDataFiles/sleepAnalysis_1.csv")
+sleepTweetsDay2 <- read.csv("/Users/llogiset/Desktop/Education/Capstone/Lakshmi_Code/PASTDataFiles/sleepAnalysis_2.csv")
+sleepTweetsDay3 <- read.csv("/Users/llogiset/Desktop/Education/Capstone/Lakshmi_Code/PASTDataFiles/sleepAnalysis_3.csv")
+sleepTweetsDay4 <- read.csv("/Users/llogiset/Desktop/Education/Capstone/Lakshmi_Code/PASTDataFiles/sleepAnalysis_4.csv")
+sleepTweetsDay5 <- read.csv("/Users/llogiset/Desktop/Education/Capstone/Lakshmi_Code/PASTDataFiles/sleepAnalysis.csv")
+
+totalSleepTweets2<-rbind(sleepTweetsDay1,sleepTweetsDay2,sleepTweetsDay3,sleepTweetsDay4,sleepTweetsDay5)
+
+#summary(totalSleepTweets)
+
+totalSleepTweets2 <- totalSleepTweets2[ -c(4) ]
+
+totalSleepTweets <- totalSleepTweets[ -c(6:9) ]
+
+#totalSleepTweets2
+
+finalTweets = rbind(totalSleepTweets2,totalSleepTweets)
+
+totalSleepTweets=finalTweets
+
+totalSleepTweets
+
+
+
+```
+
+### Understand Data
+Data has 3 column that needs to be understood for analysis
+Column - Group: 
+Group=0 are consider as the group who have sleeping issues who tweeted with tags "insomnia,sleepless, cantsleep" etc while group=1 are randon tweets who dont have sleeping issues and extracted with tags worldsleepday,goodsleep,fresh morning,sleepMatters etc
+
+Column- Sentiment: 
+This sentiment is calculated using Texblob(in Python) which have 3 values, positive,negative and neutral.
+
+Column - SufefringChronic: 
+This is calculated based on few static keywords(Like assumption for project). Below are the keys/tags
+"emotional","horrible","struggle","anxiety","depression","depressed","sick","illness","chronic","struggle","stress","tired","worried","disorder","deprived"
+
+If a tweet holds any one of the key word above consider as "suffered". We will use this based on sentiment while analysis.
+
+
+### Data Analysis - Check Behaviours of sleep issues group Vs Happy sleep(random) group
+
+Create a column called "hourTweeted" to get the tweeted time. As the data is in "AM/PM" format, takind" to get the tweeted time. As the data is in "AM/PM" format, taking hour directly irrespetive of location would work
+
+```{r}
+
+for (row in 1:nrow(totalSleepTweets)) {
+  dateInput <- totalSleepTweets[row,"created_at"]
+  hrmin=unlist(strsplit(as.character(dateInput)," "))[2]
+  hour=unlist(strsplit(as.character(hrmin),":"))[1]
+  #print(hour)
+  totalSleepTweets[row,"hourTweeted"]=hour
+}
+
+```
+
+```{r }
+totalSleepTweets <- totalSleepTweets %>%
+  mutate(group=as.factor(totalSleepTweets$group)) %>%
+  mutate(sentiment=as.factor(totalSleepTweets$sentiment)) %>% 
+  mutate(hourTweeted=as.numeric(totalSleepTweets$hourTweeted))
+
+```
+
+Lets check which are the most used timings between group 0 and 1
+```{r}
+totalSleepTweets %>%
+  gf_histogram( ~ hourTweeted) %>%
+  gf_facet_grid(group ~ .)
+
+
+```
+
+The above graph makes sense. Most of the group 0 users are active early timings or late night timings while group 1 mostly active 5AM to 6PM.
+
+Let us see side by side graph, which also reveals same.
+
+```{r }
+totalSleepTweets %>%
+  gf_histogram( ~ hourTweeted,fill =~ group, position = position_dodge(),xlab = "Time of tweet @ Hour",caption = "Insomnia tweet timings vs Non Insomnic tweets - Timimgs of their tweets")
+
+```
+```{r}
+totalSleepTweets %>%
+  gf_point(group ~ hourTweeted, color =~ sentiment) %>%
+  gf_labs(x="Time of tweet @ Hour",title = "Measure of sentiment @ Tweeted hour",subtitle="Dataset: Twitter search API")
+
+```
+The above graph shows that group 1 no negative reviews while group 0 has mixed of negative, neautral and positive. And these negative sentiments are delivered mostly during nights and early mornings as revealed by previous graph
+
+Let us check how there social behaviour would be(In our project we are considering only friends_counts).friends_count for twitters who have negative sentiment has less mean than positive in group 0. Mean is even more higher than for group1.
+
+One interesting fact which we can see here is, group 0 neutral tweeters are has high mean than group 1.This may be group 0 has more friends who have neutral thoughts.
+```{r }
+totalSleepTweets %>% 
+  group_by(group,sentiment) %>% 
+  summarise(median(friends_count),mean(friends_count))
+
+```
+
+
+### 2-sample test of proportions
+
+A two sample test for a difference of proportions is useful for comparing two proportions.
+
+Now lets create a hypothesis:
+
+H0: Tweets about "sleep issues"(from Group 0) contains a equal proportion of tweets about, say, ("anxiety","depression","sick","illness","chronic"), compared to the "random" (Group 1) of tweets
+
+Ha: Tweets about "sleep issues"(from Group 0) contains a higher proportion of tweets about, say, ("anxiety","depression","sick","illness","chronic"), compared to the "random"(Group 1) group of tweets
+
+
+```{r }
+totalSleepTweets %>% 
+  group_by(group,sufferingChronic) %>%
+  count(sentiment) 
+```
+
+Let us test our hypothesis using prop.test
+
+```{r }
+sleepG <- length(which(totalSleepTweets$group == 1))
+noSleepG <- length(which(totalSleepTweets$group == 0))
+groptweets <- totalSleepTweets %>% 
+  group_by(group) %>%
+  filter(sentiment == "negative") %>% 
+  count(sentiment)
+prop.test(c(groptweets$n[groptweets$group == 1],groptweets$n[groptweets$group == 0]),n=c(sleepG,noSleepG),alternative = "two.sided")
+```
+
+
+## Some insights
+```{r}
+totalSleepTweets <- read.csv("sleepAnalysis_ReadyModel_20200707-173439.csv")
+
+```
+
+```{r }
+totalSleepTweets %>% 
+  gf_bar(~ age ,fill =~ gender)
+
+```
+
+```{r }
+totalSleepTweets %>%  
+  gf_bar(~ emotion ,fill =~ severity)
+
+```
+
+
+```{r }
+totalSleepTweets %>% 
+  gf_bar(~ age ,fill =~Remedies)
+
+
+```
+
+```{r }
+totalSleepTweets %>% 
+  gf_bar(~ severity ,fill =~Remedies)
+
+
+```
+
+
+```{r }
+totalSleepTweets %>% 
+  gf_bar(~ emotion ,fill =~ Remedies) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+### 2-sample test of proportions
+
+A two sample test for a difference of proportions is useful for comparing two proportions.
+
+Now lets create a hypothesis:
+
+H0: Tweets about "sleep issues"(from Group 0) contains a equal proportion of tweets about, say, ("anxiety","depression","sick","illness","chronic"), compared to the "random" (Group 1) of tweets
+
+Ha: Tweets about "sleep issues"(from Group 0) contains a higher proportion of tweets about, say, ("anxiety","depression","sick","illness","chronic"), compared to the "random"(Group 1) group of tweets
+
+
+```{r }
+totalSleepTweets %>% 
+  group_by(group,sufferingChronic) %>%
+  count(sentiment) 
+```
+
+Let us test our hypothesis using prop.test
+
+```{r }
+sleepG <- length(which(totalSleepTweets$group == 1))
+noSleepG <- length(which(totalSleepTweets$group == 0))
+groptweets <- totalSleepTweets %>% 
+  group_by(group) %>%
+  filter(sentiment == "negative") %>% 
+  count(sentiment)
+prop.test(c(groptweets$n[groptweets$group == 1],groptweets$n[groptweets$group == 0]),n=c(sleepG,noSleepG),alternative = "two.sided")
+```
+
+At 95% confidence interval, p-value(0.00000000000000022)<0.05, we have enough evidence that the Tweets about "sleep issues"(from Group 0) contains a higher proportion of tweets about, say, ("anxiety","depression","sick","illness","chronic"), compared to the "random"(Group 1) group of tweets. In other words, we reject Null Hypothesis.
